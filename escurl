@@ -289,14 +289,18 @@ do
       shift
       ;;
     "--profiles")
-      [[ ! -d "$home" ]] && error "Home directory not found. Check the current configuration with \"$prog --config\" (without --profiles)"
+      [[ ! -d "$home/" ]] && error "Home directory not found. Check the current configuration with \"$prog --config\" (without --profiles)"
+      echo "Files in $home/"
+      echo
       for entry in $home/*
       do
-        echo "${entry##*/}"
-        if [[ ! -z "$config" ]]; then
-          echo "---"
-          grep . "$entry"
-          echo
+        if [[ -f "$entry" ]]; then
+          echo "${entry##*/}"
+          if [[ ! -z "$config" ]]; then
+            echo "---"
+            grep -oE "^[[:blank:]]*[[:alnum:]]+=.*$" "$entry"
+            echo
+          fi
         fi
       done
       exit 0
