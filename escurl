@@ -1,0 +1,400 @@
+#!/bin/bash
+
+prog=${0##*/}
+
+usage() {
+  echo "Usage: $prog [options...] [API|URL]"
+  echo "All curl parameters are supported. Refer to curl documentation for more details."
+  echo "escurl options:"
+  echo "  -h, --help            This message"
+  echo "      --print           Print the curl command instead of executing it"
+  echo "      --config          Print the current configuration. Can be combined with --profiles"
+  echo "      --profiles        Print the profile list"
+  echo "      --profile <name>  Overwrite the configured/default profile"
+  echo "      --kibana          Use Kibana endoint instead of Elasticsearch"
+  echo "      --no-pretty       Disable pretty results"
+  echo "      --no-auto         Disable automatic detection of json payload"
+  echo "      --ndjson          Use ndjson content type instead of json"
+  echo "Environment variables:"
+  echo "  ES_CURL_HOME:    Directory containing the profile files"
+  echo "  ES_CURL_PROFILE: The current profile to use (\"default\" if not set)"
+  echo "Content of a profile file (all fields are optional):"
+  echo "  elasticsearch=<value>  No default value"
+  echo "  kibana=<value>         No default value"
+  echo "  user=<value>           No default value"
+  echo "  password=<value>       No default value"
+  echo "  options=<value>        No default value"
+  exit 0
+}
+
+# Defaults
+pretty_opt=true
+auto_header_opt=true
+ndjson_opt=
+kibana_opt=
+
+# List of curl options that require a parameter. Tested with curl 7.79.1
+curl_options="
+    --abstract-unix-socket
+    --alt-svc
+    --cacert
+    --capath
+-E  --cert
+    --cert-typ
+    --ciphers
+-K  --config
+    --connect-timeout
+    --connect-to
+-C  --continue-at
+-b  --cookie
+-c  --cookie-jar
+    --crlfile
+-d  --data
+    --data-ascii
+    --data-binary
+    --data-raw
+    --data-urlencode
+    --delegation
+    --dns-interface
+    --dns-ipv4-addr
+    --dns-ipv6-addr
+    --dns-servers
+    --doh-url
+-D  --dump-header
+    --egd-file
+    --engine
+    --expect100-timeout
+-F  --form
+    --form-string
+    --ftp-account
+    --ftp-alternative-to-user
+    --ftp-method
+-P  --ftp-port
+    --ftp-ssl-ccc-mode
+    --happy-eyeballs-timeout-ms
+-H  --header
+    --hostpubmd5
+    --interface
+    --keepalive-time
+    --key
+    --key-type
+    --krb
+    --libcurl
+    --limit-rate
+    --local-port
+    --login-options
+    --mail-auth
+    --mail-from
+    --mail-rcpt
+    --max-filesize
+    --max-redirs
+    --max-time
+    --netrc-file
+    --noproxy
+    --oauth2-bearer
+-o  --output
+    --pass
+    --pinnedpubkey
+    --preproxy
+    --proto
+    --proto-default
+    --proto-redir
+-x  --proxy
+    --proxy-cacert
+    --proxy-capath
+    --proxy-cert
+    --proxy-cert-type
+    --proxy-ciphers
+    --proxy-crlfile
+    --proxy-header
+    --proxy-key
+    --proxy-key-type
+    --proxy-pass
+    --proxy-pinnedpubkey
+    --proxy-service-name
+    --proxy-tls13-ciphers
+    --proxy-tlsauthtype
+    --proxy-tlspassword
+    --proxy-tlsuser
+-U  --proxy-user
+    --proxy1.0
+    --pubkey
+    --random-file
+-r  --range
+-e  --referer
+-X  --request
+    --resolve
+    --retry
+    --retry-delay
+    --retry-max-time
+    --service-name
+    --socks4
+    --socks4a
+    --socks5
+    --socks5-gssapi-service
+    --socks5-hostname
+-Y  --speed-limit
+-y  --speed-time
+-t  --telnet-option
+    --tftp-blksize
+-z  --time-cond
+    --tls-max
+    --tls13-ciphers
+    --tlsauthtype
+    --tlsuser
+    --trace
+    --unix-socket
+-T  --upload-file
+    --url
+-u  --user
+-A  --user-agent
+-w  --write-out
+"
+
+# Check environment variables
+[[ ! -z $ES_CURL_HOME ]] && home="${ES_CURL_HOME%/}" || home="$HOME/.escurl"
+[[ ! -z $ES_CURL_PROFILE ]] && profile="$ES_CURL_PROFILE" || profile=default
+
+# Functions
+warn() {
+  >&2 echo "$prog: Warning: $1"
+}
+
+error() {
+  >&2 echo "$prog: Error: $1"
+  exit 1
+}
+
+is_value() {
+  [[ -z "$1" || "$1" == "-"* ]] || echo true
+}
+
+add_param() {
+  [[ -z $params ]] && params="$1" || params="$params $1"
+}
+
+add_pretty() {
+  local target="$1"
+  if [[ ! -z $pretty_opt ]]; then
+    if [[ "$target" != "_cat/"* && "$target" != *"pretty"* ]]; then
+      [[ "$target" != *"?"* ]] && target="$target?pretty" || target="$target&pretty"
+    fi
+  fi
+  echo "$target"
+}
+
+# URL and API patterns
+api_pattern="[A-Za-z0-9/_?&-]*"
+api_pattern_with_anchors="^${api_pattern}$"
+
+url_pattern_with_proto="^http[s]?:\/\/([A-Za-z0-9.-]+)(:[0-9]+)?(${api_pattern})?$"
+url_pattern_with_port="^(http[s]?:\/\/)?([A-Za-z0-9.-]+):[0-9]+(${api_pattern})?$"
+
+kbn_pattern="^kbn:[ ]*(/)?(${api_pattern})$"
+
+add_url() {
+  [[ ! -z $url ]] && error "multiple targets are not supported [$url, $1]" 
+  local target="$1"
+  # Remove leading and trailing `/` if any
+  target="${target#/}"
+  target="${target%/}"
+  if [[ ! "$target" =~ $url_pattern_with_proto && ! "$target" =~ $url_pattern_with_port ]]; then
+    [[ ! "$target" =~ $api_pattern_with_anchors && ! "$target" =~ $kbn_pattern ]] && warn "\"$1\" doesn't look like a valid URL or Elasticsearch/Kibana API"
+    if [[ "$target" =~ $kbn_pattern ]]; then
+      # Get API pattern from the second matching group
+      target=${BASH_REMATCH[2]}
+      # Use Kibana endpoint
+      [[ ! -z "$kibana" ]] && target="$kibana/$target" || error "Kibana endpoint not specified"
+      # Avoid adding several time the header if --kibana was also specified
+      if [[ -z "$kbn_header" ]]; then
+        kbn_header=true
+        pretty_opt=
+        add_param "-H'kbn-xsrf: true'"
+      fi
+    else
+      if [[ -z "$endpoint" ]]; then
+        [[ -z "$kibana_opt" ]] && error "Elasticsearch endpoint not specified" || error "Kibana endpoint not specified"
+      fi
+      [[ -z "$target" ]] && target="$endpoint" || target="$endpoint/$target"
+    fi
+  fi
+  url=$(add_pretty "$target")
+  # Use quotes around the "url" to avoid wildcard expansion (globbing) in zsh
+  url="\"$url\""
+}
+
+# Pre-parsing arguments
+for arg
+do
+  [[ "$arg" == "--help" || "$arg" == "-h" ]] && usage
+  [[ "$arg" == "--config" ]] && config=true
+  [[ "$arg" == "--no-pretty" ]] && pretty_opt=
+  [[ "$arg" == "--ndjson" ]] && ndjson_opt=true
+  [[ "$arg" == "--no-auto" ]] && auto_header_opt=
+  [[ "$arg" == "--kibana" ]] && kibana_opt=true
+  if [[ ! -z $profile_next ]]; then    
+    [[ ! $(is_value "$arg") ]] && error "option --profile: requires value"
+    profile=$arg
+    profile_next=    
+  fi
+  [[ "$arg" == "--profile" ]] && profile_next=true
+done
+
+# Sanity chek
+[[ ! -z $profile_next ]] && error "option --profile: requires value"
+
+# Read profile
+if [[ -f "$home/$profile" ]]; then
+  source "$home/$profile" 2>/dev/null || error "could not read configuration from $home/$profile"
+else
+  warn "file $home/$profile not found"
+fi
+
+# Default endpoint
+if [[ -z "$kibana_opt" ]]; then
+  [[ ! -z "$elasticsearch" ]] && endpoint="$elasticsearch" || endpoint=
+else
+  [[ ! -z "$kibana" ]] && endpoint="$kibana" || endpoint=
+fi
+
+# Removing trailing '/' from endpoint if any
+endpoint=${endpoint%/}
+
+# Value set in "options" in the profile is added to the curl parameters
+add_param "$options"
+
+# Parsing arguments
+while (( "$#" ))
+do
+  case $1 in
+    # escurl arguments
+    "--config"|"--no-pretty"|"--ndjson"|"--no-auto")
+      # Already parsed
+      ;;
+    "--kibana")
+      # Avoid adding several time the header if --kibana was also specified
+      if [[ -z "$kbn_header" ]]; then
+        kbn_header=true
+        add_param "-H'kbn-xsrf: true'"
+      fi
+      # Disable pretty print
+      pretty_opt=
+      ;;
+    "--print")
+      # Display curl command instead of executing it
+      print=true
+      ;;
+    "--profile")
+      # Already parsed. Shift next parameter as --profile expects a value
+      shift
+      ;;
+    "--profiles")
+      [[ ! -d "$home" ]] && error "Home directory not found. Check the current configuration with \"$prog --config\" (without --profiles)"
+      for entry in $home/*
+      do
+        echo "${entry##*/}"
+        if [[ ! -z "$config" ]]; then
+          echo "---"
+          grep . "$entry"
+          echo
+        fi
+      done
+      exit 0
+      ;;
+    # json / ndjson payload 
+    "{"*|"@"*)
+      # When auto mode is enabled (default), automatically consider arguments starting with '{' as json payloads. Same if it starts with '@' and the argument
+      # is a file starting with '{'
+      if [[ ! -z "$auto_header_opt" ]]; then
+        if [[ "$1" == "@"*  ]]; then
+          file="${1:1}"
+          char=
+          if [[  -f "$file" ]]; then
+            read -n1 char < "$file"
+          fi
+          if [[ "$char" != "{" ]]; then
+            warn "Couldn't read json data from file \"$file\", treating it as an API endpoint"
+            add_url "$file"
+          fi
+        fi
+        if [[ "$1" == "{"* || "$char" == "{" ]]; then     
+          [[ -z "$ndjson_opt" ]] && add_param "-H'Content-Type: application/json' -d '$1'" || add_param "-H'Content-Type: application/x-ndjson' --data-binary '$1'"
+          auto_header_opt=
+        fi
+      else
+        [[ "$1" == "@"*  ]] && add_url "${1:1}" || add_url "$1"
+      fi
+      ;;  
+    # curl arguments
+    "-u"|"--user")
+      auth=true
+      add_param "$1"
+      opt=$1
+      shift
+      [[ ! $(is_value "$1") ]] && error "option $opt: requires value"
+      add_param "'$1'"
+      ;;
+    "-u"*)
+      auth=true
+      add_param "-u'${1:2}'"
+      ;;
+    "-"*)
+      # short form of the options accept the value to be concatened (e.g. -uelastic / -u elastic) 
+      [[ "$1" == --* ]] && is_short= || is_short=true
+      # Let's add single quote around option parameters to avoid surprises
+      [[ $is_short && ${#1} -gt "2" ]] && add_param "${1:0:2}'${1:2}'" || add_param "$1"
+      # Find out if the option requires a parameter. If so, we need to add it and shift once more
+      for o in $curl_options; do
+        [[ "$1" == $o  ]] && shift && add_param "'$1'" && break
+        [[ "$1" == $o* && $is_short ]] && break
+      done
+      ;;
+    # Other
+    *)
+      # not an option nor an option parameter, so it's an url
+      add_url "$1"      
+      ;;
+  esac
+  shift
+done
+
+# Display the current configuration and exit
+if [[ ! -z "$config" && -z "$profiles" ]]; then
+  echo "--"
+  echo "ES_CURL_HOME=$ES_CURL_HOME"
+  echo "ES_CURL_PROFILE=$ES_CURL_PROFILE"
+  echo "--"
+  path="$home/$profile"
+  if [[ -f "$path" ]]; then
+    echo "path=$path"
+    echo "--"
+    echo "elasticsearch=$elasticsearch"
+    echo "kibana=$kibana"
+    echo "user=$user"
+    echo "password=$password"
+    echo "options=$options"
+  else
+    echo "path=$path (NOT FOUND)"
+  fi
+  exit 0
+fi
+
+# Call / API if no url was specified
+if [[ -z $url ]]; then
+  add_url "/"
+fi
+
+# Authentication
+if [[ -z $auth && ! -z $user ]]; then
+  [[ -z $password ]] && add_param "-u'$user'" || add_param "-u'$user:$password'"
+fi
+
+# Prepend params if any
+[[ -z "$params" ]] && args="$url" || args="$params $url"
+
+# Execute the curl command or echo it if --print option was specified
+if [[ -z "$print" ]]; then
+  eval "curl $args"
+else
+  echo "curl $args"
+fi
