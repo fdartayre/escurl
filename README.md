@@ -1,6 +1,6 @@
 # Description
 
-`escurl` is a Bash script acting as a command line wrapper around `curl`. It is designed to interact with the REST APIs of Elasticsearch and Kibana and provide a similar experience from a terminal as from the Kibana Dev Tools console.
+`escurl` is a Bash script acting as a command line wrapper around `curl` to interact with the REST APIs of Elasticsearch and Kibana.
 
 # Configuration
 
