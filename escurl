@@ -208,6 +208,7 @@ add_url() {
       # Avoid adding several time the header if --kibana was also specified
       if [[ -z "$kbn_header" ]]; then
         kbn_header=true
+        # Disable pretty print at '?pretty' is not supported by Kibana
         pretty_opt=
         add_param "-H'kbn-xsrf: true'"
       fi
@@ -245,7 +246,7 @@ done
 
 # Read profile
 if [[ -f "$home/$profile" ]]; then
-  source "$home/$profile" 2>/dev/null || error "could not read configuration from $home/$profile"
+  source "$home/$profile" &> /dev/null || error "could not read configuration from $home/$profile"
 else
   warn "file $home/$profile not found"
 fi
@@ -277,7 +278,7 @@ do
         kbn_header=true
         add_param "-H'kbn-xsrf: true'"
       fi
-      # Disable pretty print
+      # Disable pretty print at '?pretty' is not supported by Kibana
       pretty_opt=
       ;;
     "--print")
@@ -290,15 +291,19 @@ do
       ;;
     "--profiles")
       [[ ! -d "$home/" ]] && error "Home directory not found. Check the current configuration with \"$prog --config\" (without --profiles)"
-      echo "Files in $home/"
-      echo
+      if [[ ! -z "$config" ]]; then
+        if ! command -v grep &> /dev/null; then 
+          nogrep=true
+          warn "command not found: grep (cannot display the profiles configuration)"
+        fi
+      fi
       for entry in $home/*
       do
         if [[ -f "$entry" ]]; then
           echo "${entry##*/}"
-          if [[ ! -z "$config" ]]; then
+          if [[ ! -z "$config" && -z "$nogrep" ]]; then
             echo "---"
-            grep -oE "^[[:blank:]]*[[:alnum:]]+=.*$" "$entry"
+            grep -oE "(elasticsearch|kibana|user|password|options)=.*?($|;)" "$entry"
             echo
           fi
         fi
