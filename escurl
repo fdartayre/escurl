@@ -183,14 +183,9 @@ add_pretty() {
   echo "$target"
 }
 
-# URL and API patterns
-api_pattern="[A-Za-z0-9/_?&*.=-]*"
-api_pattern_with_anchors="^${api_pattern}$"
-
-url_pattern_with_proto="^http[s]?:\/\/([A-Za-z0-9.-]+)(:[0-9]+)?(${api_pattern})?$"
-url_pattern_with_port="^(http[s]?:\/\/)?([A-Za-z0-9.-]+):[0-9]+(${api_pattern})?$"
-
-kbn_pattern="^kbn:[ ]*(/)?(${api_pattern})$"
+# target patterns
+url_pattern="(^http[s]?:\/\/([A-Za-z0-9.-]+)(:[0-9]+)?|^(http[s]?:\/\/)?([A-Za-z0-9.-]+):[0-9]+)"
+kbn_pattern="^kbn:\s*(/)?"
 
 add_url() {
   [[ ! -z $url ]] && error "multiple targets are not supported [$url, $1]" 
@@ -198,8 +193,7 @@ add_url() {
   # Remove leading and trailing `/` if any
   target="${target#/}"
   target="${target%/}"  
-  if [[ ! "$target" =~ $url_pattern_with_proto && ! "$target" =~ $url_pattern_with_port ]]; then
-    [[ ! "$target" =~ $api_pattern_with_anchors && ! "$target" =~ $kbn_pattern ]] && warn "\"$1\" doesn't look like a valid URL or Elasticsearch/Kibana API"
+  if [[ ! "$target" =~ $url_pattern ]]; then
     if [[ "$target" =~ $kbn_pattern ]]; then
       # Get API pattern from the second matching group
       target=${BASH_REMATCH[2]}
@@ -217,7 +211,7 @@ add_url() {
         [[ -z "$kibana_opt" ]] && error "Elasticsearch endpoint not specified" || error "Kibana endpoint not specified"
       fi
       [[ -z "$target" ]] && target="$endpoint" || target="$endpoint/$target"
-    fi
+    fi  
   fi
   target=$(add_pretty "$target")
   # Use quotes around the "url" to avoid wildcard expansion (globbing) in zsh
@@ -267,7 +261,7 @@ add_param "$options"
 # Parsing arguments
 while (( "$#" ))
 do
-  case $1 in
+  case "$1" in
     # escurl arguments
     "--config"|"--no-pretty"|"--ndjson"|"--no-auto")
       # Already parsed
@@ -303,7 +297,7 @@ do
           echo "${entry##*/}"
           if [[ ! -z "$config" && -z "$nogrep" ]]; then
             echo "---"
-            grep -oE "(elasticsearch|kibana|user|password|options)=.*?($|;)" "$entry"
+            grep -oE "(#\s*)?(elasticsearch|kibana|user|password|options)=.*?($|;)" "$entry"
             echo
           fi
         fi
@@ -327,8 +321,11 @@ do
           fi
         fi
         if [[ "$1" == "{"* || "$char" == "{" ]]; then     
-          [[ -z "$ndjson_opt" ]] && add_param "-H'Content-Type: application/json' -d '$1'" || add_param "-H'Content-Type: application/x-ndjson' --data-binary '$1'"
-          auto_header_opt=
+          if [[ -z "$content_type_header" ]]; then
+            [[ -z "$ndjson_opt" ]] && add_param "-H'Content-Type: application/json'" || add_param "-H'Content-Type: application/x-ndjson'"
+            content_type_header=true
+          fi
+          [[ -z "$ndjson_opt" ]] && add_param "-d '$1'" || add_param "--data-binary '$1'"          
         fi
       else
         [[ "$1" == "@"*  ]] && add_url "${1:1}" || add_url "$1"
@@ -403,6 +400,9 @@ fi
 
 # Execute the curl command or echo it if --print option was specified
 if [[ -z "$print" ]]; then
+  if ! command -v curl &> /dev/null; then 
+    error "command not found: curl (cannot execute the curl command)"
+  fi
   eval "curl $args"
 else
   echo "curl $args"
