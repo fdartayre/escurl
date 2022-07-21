@@ -11,7 +11,7 @@ usage() {
   echo "      --config          Print the current configuration. Can be combined with --profiles"
   echo "      --profiles        Print the profile list"
   echo "      --profile <name>  Overwrite the configured/default profile"
-  echo "      --kibana          Use Kibana endoint instead of Elasticsearch"
+  echo "      --kibana          Use Kibana endpoint instead of Elasticsearch"
   echo "      --no-pretty       Disable pretty results"
   echo "      --no-auto         Disable automatic detection of json payload"
   echo "      --ndjson          Use ndjson content type instead of json"
@@ -176,7 +176,7 @@ add_param() {
 add_pretty() {
   local target="$1"
   if [[ ! -z $pretty_opt ]]; then
-    if [[ "$target" != "_cat/"* && "$target" != *"pretty"* ]]; then
+    if [[ "$target" != *"_cat/"* && "$target" != *"pretty"* ]]; then
       [[ "$target" != *"?"* ]] && target="$target?pretty" || target="$target&pretty"
     fi
   fi
@@ -184,7 +184,7 @@ add_pretty() {
 }
 
 # URL and API patterns
-api_pattern="[A-Za-z0-9/_?&-]*"
+api_pattern="[A-Za-z0-9/_?&*.=-]*"
 api_pattern_with_anchors="^${api_pattern}$"
 
 url_pattern_with_proto="^http[s]?:\/\/([A-Za-z0-9.-]+)(:[0-9]+)?(${api_pattern})?$"
@@ -197,7 +197,7 @@ add_url() {
   local target="$1"
   # Remove leading and trailing `/` if any
   target="${target#/}"
-  target="${target%/}"
+  target="${target%/}"  
   if [[ ! "$target" =~ $url_pattern_with_proto && ! "$target" =~ $url_pattern_with_port ]]; then
     [[ ! "$target" =~ $api_pattern_with_anchors && ! "$target" =~ $kbn_pattern ]] && warn "\"$1\" doesn't look like a valid URL or Elasticsearch/Kibana API"
     if [[ "$target" =~ $kbn_pattern ]]; then
@@ -219,9 +219,9 @@ add_url() {
       [[ -z "$target" ]] && target="$endpoint" || target="$endpoint/$target"
     fi
   fi
-  url=$(add_pretty "$target")
+  target=$(add_pretty "$target")
   # Use quotes around the "url" to avoid wildcard expansion (globbing) in zsh
-  url="\"$url\""
+  url="\"$target\""
 }
 
 # Pre-parsing arguments
