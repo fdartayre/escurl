@@ -7,7 +7,6 @@ usage() {
   echo "All curl parameters are supported. Refer to curl documentation for more details."
   echo "escurl options:"
   echo "  -h, --help            This message"
-  echo "      --print           Print the curl command instead of executing it"
   echo "      --config          Print the current configuration. Can be combined with --profiles"
   echo "      --profiles        Print the profile list"
   echo "      --profile <name>  Overwrite the configured/default profile"
@@ -15,6 +14,8 @@ usage() {
   echo "      --no-pretty       Disable pretty results"
   echo "      --no-auto         Disable automatic detection of json payload"
   echo "      --ndjson          Use ndjson content type instead of json"
+  echo "      --print           Print the curl command instead of executing it"
+  echo "      --show-pwd        Show password from profile with --print"
   echo "Environment variables:"
   echo "  ES_CURL_HOME:    Directory containing the profile files"
   echo "  ES_CURL_PROFILE: The current profile to use (\"default\" if not set)"
@@ -32,6 +33,7 @@ pretty_opt=true
 auto_header_opt=true
 ndjson_opt=
 kibana_opt=
+show_pwd_opt=
 
 # List of curl options that require a parameter. Tested with curl 7.79.1
 curl_options="
@@ -169,13 +171,17 @@ is_value() {
   [[ -z "$1" || "$1" == "-"* ]] || echo true
 }
 
+is_file() {
+  [[ -f "$1" || -L "$1" ]] && echo true
+}
+
 add_param() {
   [[ -z $params ]] && params="$1" || params="$params $1"
 }
 
 add_pretty() {
   local target="$1"
-  if [[ ! -z $pretty_opt ]]; then
+  if [[ ! -z $pretty_opt && -z "$kibana_opt" ]]; then
     if [[ "$target" != *"_cat/"* && "$target" != *"pretty"* ]]; then
       [[ "$target" != *"?"* ]] && target="$target?pretty" || target="$target&pretty"
     fi
@@ -185,14 +191,14 @@ add_pretty() {
 
 # target patterns
 url_pattern="(^http[s]?:\/\/([A-Za-z0-9.-]+)(:[0-9]+)?|^(http[s]?:\/\/)?([A-Za-z0-9.-]+):[0-9]+)"
-kbn_pattern="^kbn:\s*(/)?"
+kbn_pattern="^kbn:(/)?([^ ]+)"
 
 add_url() {
   [[ ! -z $url ]] && error "multiple targets are not supported [$url, $1]" 
   local target="$1"
   # Remove leading and trailing `/` if any
   target="${target#/}"
-  target="${target%/}"  
+  target="${target%/}"
   if [[ ! "$target" =~ $url_pattern ]]; then
     if [[ "$target" =~ $kbn_pattern ]]; then
       # Get API pattern from the second matching group
@@ -215,7 +221,7 @@ add_url() {
   fi
   target=$(add_pretty "$target")
   # Use quotes around the "url" to avoid wildcard expansion (globbing) in zsh
-  url="\"$target\""
+  url="'$target'"
 }
 
 # Pre-parsing arguments
@@ -227,6 +233,7 @@ do
   [[ "$arg" == "--ndjson" ]] && ndjson_opt=true
   [[ "$arg" == "--no-auto" ]] && auto_header_opt=
   [[ "$arg" == "--kibana" ]] && kibana_opt=true
+  [[ "$arg" == "--show-pwd" ]] && show_pwd_opt=true
   if [[ ! -z $profile_next ]]; then    
     [[ ! $(is_value "$arg") ]] && error "option --profile: requires value"
     profile=$arg
@@ -239,7 +246,7 @@ done
 [[ ! -z $profile_next ]] && error "option --profile: requires value"
 
 # Read profile
-if [[ -f "$home/$profile" ]]; then
+if [[ $(is_file "$home/$profile") ]]; then
   source "$home/$profile" &> /dev/null || error "could not read configuration from $home/$profile"
 else
   warn "file $home/$profile not found"
@@ -263,7 +270,7 @@ while (( "$#" ))
 do
   case "$1" in
     # escurl arguments
-    "--config"|"--no-pretty"|"--ndjson"|"--no-auto")
+    "--config"|"--no-pretty"|"--ndjson"|"--no-auto"|"--show-pwd")
       # Already parsed
       ;;
     "--kibana")
@@ -293,11 +300,17 @@ do
       fi
       for entry in $home/*
       do
-        if [[ -f "$entry" ]]; then
+        if [[ $(is_file "$entry") ]]; then
           echo "${entry##*/}"
           if [[ ! -z "$config" && -z "$nogrep" ]]; then
             echo "---"
-            grep -oE "(#\s*)?(elasticsearch|kibana|user|password|options)=.*?($|;)" "$entry"
+            grep -oE "(#\s*)?(elasticsearch|kibana|user|options)=.*?($|;)" "$entry"
+            if [[ -z "$show_pwd_opt" ]]; then              
+              password=$(grep -oE "(#\s*)?password=" "$entry")
+              echo "$password<secret>"
+            else
+              grep -oE "(#\s*)?password=.*?($|;)" "$entry"
+            fi
             echo
           fi
         fi
@@ -371,13 +384,13 @@ if [[ ! -z "$config" && -z "$profiles" ]]; then
   echo "ES_CURL_PROFILE=$ES_CURL_PROFILE"
   echo "--"
   path="$home/$profile"
-  if [[ -f "$path" ]]; then
+  if [[ $(is_file "$path") ]]; then
     echo "path=$path"
     echo "--"
     echo "elasticsearch=$elasticsearch"
     echo "kibana=$kibana"
     echo "user=$user"
-    echo "password=$password"
+    [[ ! -z "$show_pwd_opt" ]] && echo "password=$password" || echo "password=<secret>"
     echo "options=$options"
   else
     echo "path=$path (NOT FOUND)"
@@ -392,7 +405,11 @@ fi
 
 # Authentication
 if [[ -z $auth && ! -z $user ]]; then
-  [[ -z $password ]] && add_param "-u'$user'" || add_param "-u'$user:$password'"
+  if [[ -z $password ]]; then
+    add_param "-u'$user'"
+  else
+    [[ -z "$print" || ! -z "$show_pwd_opt" ]] && add_param "-u'$user:$password'" || add_param "-u'$user:<secret>'"
+  fi
 fi
 
 # Prepend params if any
