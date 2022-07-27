@@ -67,11 +67,6 @@ Use NDJSON content type instead of JSON. It only is effective when a JSON payloa
 &nbsp;&nbsp;
 Disable automatic detection of JSON payload.
 
-`--no-pretty`
-
-&nbsp;&nbsp;
-Disable pretty results. By default pretty results are enabled for requests sent to Elasticsearch.
-
 `--print`           
 
 &nbsp;&nbsp;
@@ -86,6 +81,16 @@ Overwrite the configured/default profile.
 
 &nbsp;&nbsp;
 Print the list of profiles in `escurl` home directory. This can be combined with `--config` to display the content of the profiles as well (password will be printed too).
+
+`--no-pretty`
+
+&nbsp;&nbsp;
+Disable pretty results. By default pretty results are enabled for requests sent to Elasticsearch.
+
+`--show-pwd`
+
+&nbsp;&nbsp;
+By default `--config` and `--print` options don't show the password configured in the profiles. This option prints the actual configured password.
 
 `-h, --help`
 
@@ -121,7 +126,7 @@ path=/Users/fred/.escurl/ess_security
 elasticsearch=https://security-45dbac.es.us-central1.gcp.cloud.es.io:9243
 kibana=https://security-45dbac.kb.us-central1.gcp.cloud.es.io:9243
 user=fred
-password=l0ng-r4nd0m-p@ssw0rd
+password=<secret>
 options=
 ```
 Further `escurl` commands are directly issued to this cluster:
@@ -168,7 +173,7 @@ $ escurl _cluster/health
 To print the `curl` command instead of executing it, add `--print`:
 ```bash
 $ escurl _cluster/health --print
-curl -u'fred:l0ng-r4nd0m-p@ssw0rd' "https://security-45dbac.es.us-central1.gcp.cloud.es.io:9243/_cluster/health?pretty"
+curl -u'fred:<secret>' "https://security-45dbac.es.us-central1.gcp.cloud.es.io:9243/_cluster/health?pretty"
 ```
 To illustrate how to send a JSON payload, let's create a user:
 ```
@@ -192,7 +197,7 @@ curl -X'POST' -H'Content-Type: application/json' -d '{
   "metadata" : {
     "intelligence" : 7
   }
-}' -u'fred:l0ng-r4nd0m-p@ssw0rd' "https://security-45dbac.es.us-central1.gcp.cloud.es.io:9243/_security/user/jacknich?pretty"
+}' -u'fred:<secret>' "https://security-45dbac.es.us-central1.gcp.cloud.es.io:9243/_security/user/jacknich?pretty"
 ```
 Sending bulk requests from a file named `requests` will also be quite shorter than the corresponding curl command:
 ```bash
@@ -200,7 +205,7 @@ $ escurl -XPOST my_index/_bulk @requests --ndjson
 ```
 The generated `curl` command is:
 ```
-curl -X'POST' -H'Content-Type: application/x-ndjson' --data-binary '@requests' -u'fred:l0ng-r4nd0m-p@ssw0rd' "https://security-45dbac.es.us-central1.gcp.cloud.es.io:9243/my_index/_bulk?pretty"
+curl -X'POST' -H'Content-Type: application/x-ndjson' --data-binary '@requests' -u'fred:<secret>' "https://security-45dbac.es.us-central1.gcp.cloud.es.io:9243/my_index/_bulk?pretty"
 ```
 ## Kibana
 To send requests to Kibana instead of Elasticsearch we can either use the `--kibana` option or prefix the API with `kbn:`:

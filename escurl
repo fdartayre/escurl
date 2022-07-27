@@ -15,7 +15,7 @@ usage() {
   echo "      --no-auto         Disable automatic detection of json payload"
   echo "      --ndjson          Use ndjson content type instead of json"
   echo "      --print           Print the curl command instead of executing it"
-  echo "      --show-pwd        Show password from profile with --print"
+  echo "      --show-pwd        Show password from profile in --print and --config outputs"
   echo "Environment variables:"
   echo "  ES_CURL_HOME:    Directory containing the profile files"
   echo "  ES_CURL_PROFILE: The current profile to use (\"default\" if not set)"
