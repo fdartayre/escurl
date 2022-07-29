@@ -323,7 +323,7 @@ do
       if [[ "$1" == "@"*  ]]; then
         file="${1:1}"
         char=
-        if [[  -f "$file" ]]; then
+        if [[ $(is_file "$file") ]]; then
           read -n1 char < "$file"
         fi
         if [[ "$char" != "{" ]]; then
