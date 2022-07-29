@@ -1,6 +1,6 @@
 # Description
 
-`escurl` is a Bash script acting as a command line wrapper around `curl` to interact with the REST APIs of Elasticsearch and Kibana.
+`escurl` is a Bash script acting as a command line wrapper around `curl` to interact with the REST APIs of Elasticsearch and Kibana. All `curl` options are supported but calling multiple APIs on the same command line is not supported.
 
 # Configuration
 
@@ -40,8 +40,8 @@ escurl [options...] [API|URL]
 
 The `escurl` command line options all start with `-` and the list of recognized options can be found below. Other parameters are either interpreted as an API, a URL, a `curl` parameter or a JSON / NDJSON payload.
 
-- A command line parameter that starts with `http[s]://` or contains a `<hostname>:<port>` is interpreted as a URL
-- A command line parameter that starts with `-` is either a `escurl` parameter if it is listed below or interpreted as a `curl` parameter otherwise. **All curl parameters are supported**.
+- A command line parameter that starts with `http[s]://` or contains a `<hostname>:<port>` is interpreted as a URL. As in `curl`, you can specify multiple parts of URLs by writing part sets within braces as in `http://site.{one,two,three}.com`. Multiple URLs are not supported though, and a URL cannot start with `{`.
+- A command line parameter that starts with `-` is either a `escurl` parameter if it is listed below or interpreted as a `curl` parameter otherwise. All curl parameters are supported.
 - A command line parameter that starts with `{` is interpreted as a JSON (or NDJSON) payload to be sent to the server. Similar to data payload in `curl`, if it starts with the letter `@`, the rest should be a filename. If the first character in the file is `{`, the file content is also interpreted as JSON (or NDJSON) payload.
 - Otherwise, the command line parameter is interpreted as an API to be called on Elasticsearch or Kibana (if the API starts with `kbn:` or if `--kibana` was specified).
 
@@ -51,6 +51,11 @@ The `escurl` command line options all start with `-` and the list of recognized 
 
 &nbsp;&nbsp;
 Print the current configuration. Can be combined with `--profiles` to show the content of all the profiles.
+
+`-h, --help`
+
+&nbsp;&nbsp;
+Usage help.
 
 `--kibana`
 
@@ -62,12 +67,12 @@ Use Kibana endoint instead of Elasticsearch. Same as prefixing the API with `kbn
 &nbsp;&nbsp;
 Use NDJSON content type instead of JSON. It only is effective when a JSON payload has been detected.
 
-`--no-auto`
+`--no-pretty`
 
 &nbsp;&nbsp;
-Disable automatic detection of JSON payload.
+Disable pretty results. By default pretty results are enabled for requests sent to Elasticsearch.
 
-`--print`           
+`--print`
 
 &nbsp;&nbsp;
 Print the `curl` command instead of executing it.
@@ -82,20 +87,10 @@ Overwrite the configured/default profile.
 &nbsp;&nbsp;
 Print the list of profiles in `escurl` home directory. This can be combined with `--config` to display the content of the profiles as well (password will be printed too).
 
-`--no-pretty`
-
-&nbsp;&nbsp;
-Disable pretty results. By default pretty results are enabled for requests sent to Elasticsearch.
-
 `--show-pwd`
 
 &nbsp;&nbsp;
 By default `--config` and `--print` options don't show the password configured in the profiles. This option prints the actual configured password.
-
-`-h, --help`
-
-&nbsp;&nbsp;
-Usage help.
 
 # Workflow examples
 

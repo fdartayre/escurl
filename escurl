@@ -12,7 +12,6 @@ usage() {
   echo "      --profile <name>  Overwrite the configured/default profile"
   echo "      --kibana          Use Kibana endpoint instead of Elasticsearch"
   echo "      --no-pretty       Disable pretty results"
-  echo "      --no-auto         Disable automatic detection of json payload"
   echo "      --ndjson          Use ndjson content type instead of json"
   echo "      --print           Print the curl command instead of executing it"
   echo "      --show-pwd        Show password from profile in --print and --config outputs"
@@ -30,7 +29,6 @@ usage() {
 
 # Defaults
 pretty_opt=true
-auto_header_opt=true
 ndjson_opt=
 kibana_opt=
 show_pwd_opt=
@@ -194,7 +192,6 @@ url_pattern="(^http[s]?:\/\/([A-Za-z0-9.-]+)(:[0-9]+)?|^(http[s]?:\/\/)?([A-Za-z
 kbn_pattern="^kbn:(/)?([^ ]+)"
 
 add_url() {
-  [[ ! -z $url ]] && error "multiple targets are not supported [$url, $1]" 
   local target="$1"
   # Remove leading and trailing `/` if any
   target="${target#/}"
@@ -221,7 +218,10 @@ add_url() {
   fi
   target=$(add_pretty "$target")
   # Use quotes around the "url" to avoid wildcard expansion (globbing) in zsh
-  url="'$target'"
+  target="'$target'"
+
+  [[ ! -z $url ]] && error "multiple targets are not supported [$url, $target]" 
+  url="$target"
 }
 
 # Pre-parsing arguments
@@ -231,7 +231,6 @@ do
   [[ "$arg" == "--config" ]] && config=true
   [[ "$arg" == "--no-pretty" ]] && pretty_opt=
   [[ "$arg" == "--ndjson" ]] && ndjson_opt=true
-  [[ "$arg" == "--no-auto" ]] && auto_header_opt=
   [[ "$arg" == "--kibana" ]] && kibana_opt=true
   [[ "$arg" == "--show-pwd" ]] && show_pwd_opt=true
   if [[ ! -z $profile_next ]]; then    
@@ -270,7 +269,7 @@ while (( "$#" ))
 do
   case "$1" in
     # escurl arguments
-    "--config"|"--no-pretty"|"--ndjson"|"--no-auto"|"--show-pwd")
+    "--config"|"--no-pretty"|"--ndjson"|"--show-pwd")
       # Already parsed
       ;;
     "--kibana")
@@ -319,29 +318,25 @@ do
       ;;
     # json / ndjson payload 
     "{"*|"@"*)
-      # When auto mode is enabled (default), automatically consider arguments starting with '{' as json payloads. Same if it starts with '@' and the argument
-      # is a file starting with '{'
-      if [[ ! -z "$auto_header_opt" ]]; then
-        if [[ "$1" == "@"*  ]]; then
-          file="${1:1}"
-          char=
-          if [[  -f "$file" ]]; then
-            read -n1 char < "$file"
-          fi
-          if [[ "$char" != "{" ]]; then
-            warn "Couldn't read json data from file \"$file\", treating it as an API endpoint"
-            add_url "$file"
-          fi
+      # Arguments starting with '{' are interpreted as JSON payloads (or NDJSON) . If it start swith the letter @, the rest should be a filename. 
+      # If the first character in the file is {, the file content is also interpreted as JSON (or NDJSON) payload.
+      if [[ "$1" == "@"*  ]]; then
+        file="${1:1}"
+        char=
+        if [[  -f "$file" ]]; then
+          read -n1 char < "$file"
         fi
-        if [[ "$1" == "{"* || "$char" == "{" ]]; then     
-          if [[ -z "$content_type_header" ]]; then
-            [[ -z "$ndjson_opt" ]] && add_param "-H'Content-Type: application/json'" || add_param "-H'Content-Type: application/x-ndjson'"
-            content_type_header=true
-          fi
-          [[ -z "$ndjson_opt" ]] && add_param "-d '$1'" || add_param "--data-binary '$1'"          
+        if [[ "$char" != "{" ]]; then
+          warn "Couldn't read json data from file \"$file\", treating it as an API endpoint"
+          add_url "$file"
         fi
-      else
-        [[ "$1" == "@"*  ]] && add_url "${1:1}" || add_url "$1"
+      fi
+      if [[ "$1" == "{"* || "$char" == "{" ]]; then     
+        if [[ -z "$content_type_header" ]]; then
+          [[ -z "$ndjson_opt" ]] && add_param "-H'Content-Type: application/json'" || add_param "-H'Content-Type: application/x-ndjson'"
+          content_type_header=true
+        fi
+        [[ -z "$ndjson_opt" ]] && add_param "-d '$1'" || add_param "--data-binary '$1'"          
       fi
       ;;  
     # curl arguments
