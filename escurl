@@ -7,14 +7,14 @@ usage() {
   echo "All curl parameters are supported. Refer to curl documentation for more details."
   echo "escurl options:"
   echo "  -h, --help            This message"
-  echo "      --config          Print the current configuration. Can be combined with --profiles"
   echo "      --profiles        Print the profile list"
   echo "      --profile <name>  Overwrite the configured/default profile"
   echo "      --kibana          Use Kibana endpoint instead of Elasticsearch"
   echo "      --no-pretty       Disable pretty results"
   echo "      --ndjson          Use ndjson content type instead of json"
   echo "      --print           Print the curl command instead of executing it"
-  echo "      --show-pwd        Show password from profile in --print and --config outputs"
+  echo "      --show-config     Print the current configuration. Can be combined with --profiles"
+  echo "      --show-password   Show password from profile in --print and --show-config outputs"
   echo "Environment variables:"
   echo "  ES_CURL_HOME:    Directory containing the profile files"
   echo "  ES_CURL_PROFILE: The current profile to use (\"default\" if not set)"
@@ -31,7 +31,8 @@ usage() {
 pretty_opt=true
 ndjson_opt=
 kibana_opt=
-show_pwd_opt=
+show_config_opt=
+show_password_opt=
 print_opt=
 
 # List of curl options that require a parameter. Tested with curl 7.79.1
@@ -229,11 +230,11 @@ add_url() {
 for arg
 do  
   [[ "$arg" == "--help" || "$arg" == "-h" ]] && usage
-  [[ "$arg" == "--config" ]] && config=true
+  [[ "$arg" == "--show-config" ]] && show_config_opt=true
   [[ "$arg" == "--no-pretty" ]] && pretty_opt=
   [[ "$arg" == "--ndjson" ]] && ndjson_opt=true
   [[ "$arg" == "--kibana" ]] && kibana_opt=true
-  [[ "$arg" == "--show-pwd" ]] && show_pwd_opt=true
+  [[ "$arg" == "--show-password" ]] && show_password_opt=true
   [[ "$arg" == "--print" ]] && print_opt=true
   if [[ ! -z $profile_next ]]; then    
     [[ ! $(is_value "$arg") ]] && error "option --profile: requires value"
@@ -271,7 +272,7 @@ while (( "$#" ))
 do
   case "$1" in
     # escurl arguments
-    "--config"|"--no-pretty"|"--ndjson"|"--show-pwd"|"--print")
+    "--show-config"|"--no-pretty"|"--ndjson"|"--show-password"|"--print")
       # Already parsed
       ;;
     "--kibana")
@@ -288,8 +289,8 @@ do
       shift
       ;;
     "--profiles")
-      [[ ! -d "$home/" ]] && error "Home directory not found. Check the current configuration with \"$prog --config\" (without --profiles)"
-      if [[ ! -z "$config" ]]; then
+      [[ ! -d "$home/" ]] && error "Home directory not found. Check the current configuration with \"$prog --show-config\" (without --profiles)"
+      if [[ ! -z "$show_config_opt" ]]; then
         if ! command -v grep &> /dev/null; then 
           nogrep=true
           warn "command not found: grep (cannot display the profiles configuration)"
@@ -299,12 +300,11 @@ do
       do
         if [[ $(is_file "$entry") ]]; then
           echo "${entry##*/}"
-          if [[ ! -z "$config" && -z "$nogrep" ]]; then
+          if [[ ! -z "$show_config_opt" && -z "$nogrep" ]]; then
             echo "---"
             grep -oE "(#\s*)?(elasticsearch|kibana|user|options)=.*?($|;)" "$entry"
-            if [[ -z "$show_pwd_opt" ]]; then              
-              password=$(grep -oE "(#\s*)?password=" "$entry")
-              echo "$password<secret>"
+            if [[ -z "$show_password_opt" ]]; then              
+              echo "password=<secret>"
             else
               grep -oE "(#\s*)?password=.*?($|;)" "$entry"
             fi
@@ -371,7 +371,7 @@ do
 done
 
 # Display the current configuration and exit
-if [[ ! -z "$config" && -z "$profiles" ]]; then
+if [[ ! -z "$show_config_opt" && -z "$profiles" ]]; then
   echo "--"
   echo "ES_CURL_HOME=$ES_CURL_HOME"
   echo "ES_CURL_PROFILE=$ES_CURL_PROFILE"
@@ -383,7 +383,7 @@ if [[ ! -z "$config" && -z "$profiles" ]]; then
     echo "elasticsearch=$elasticsearch"
     echo "kibana=$kibana"
     echo "user=$user"
-    [[ ! -z "$show_pwd_opt" ]] && echo "password=$password" || echo "password=<secret>"
+    [[ ! -z "$show_password_opt" ]] && echo "password=$password" || echo "password=<secret>"
     echo "options=$options"
   else
     echo "path=$path (NOT FOUND)"
@@ -401,7 +401,7 @@ if [[ -z $auth && ! -z $user ]]; then
   if [[ -z $password ]]; then
     add_param "-u'$user'"
   else
-    [[ -z "$print_opt" || ! -z "$show_pwd_opt" ]] && add_param "-u'$user:$password'" || add_param "-u'$user:<secret>'"
+    [[ -z "$print_opt" || ! -z "$show_password_opt" ]] && add_param "-u'$user:$password'" || add_param "-u'$user:<secret>'"
   fi
 fi
 
