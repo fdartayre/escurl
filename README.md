@@ -47,7 +47,7 @@ The `escurl` command line options all start with `-` and the list of recognized 
 
 ### Options
 
-`--config`
+`--show-config`
 
 &nbsp;&nbsp;
 Print the current configuration. Can be combined with `--profiles` to show the content of all the profiles.
@@ -85,12 +85,12 @@ Overwrite the configured/default profile.
 `--profiles`
 
 &nbsp;&nbsp;
-Print the list of profiles in `escurl` home directory. This can be combined with `--config` to display the content of the profiles as well (password will be printed too).
+Print the list of profiles in `escurl` home directory. This can be combined with `--show-config` to display the content of the profiles as well (password will be printed too).
 
-`--show-pwd`
+`--show-password`
 
 &nbsp;&nbsp;
-By default `--config` and `--print` options don't show the password configured in the profiles. This option prints the actual configured password.
+By default `--show-config` and `--print` options don't show the password configured in the profiles. This option prints the actual configured password.
 
 # Workflow examples
 
@@ -111,7 +111,7 @@ local_ssl
 To work with a specific cluster, say `ess_security`, we can export `ES_CURL_PROFILE`:
 ```bash
 $ export ES_CURL_PROFILE=ess_security
-$ escurl --config
+$ escurl --show-config
 --
 ES_CURL_HOME=
 ES_CURL_PROFILE=ess_security
