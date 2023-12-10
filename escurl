@@ -7,13 +7,13 @@ usage() {
   echo "All curl parameters are supported. Refer to curl documentation for more details."
   echo "escurl options:"
   echo "  -h, --help            This message"
-  echo "      --profiles        Print the profile list"
   echo "      --profile <name>  Overwrite the configured/default profile"
   echo "      --kibana          Use Kibana endpoint instead of Elasticsearch"
   echo "      --no-pretty       Disable pretty results"
   echo "      --ndjson          Use ndjson content type instead of json"
   echo "      --print           Print the curl command instead of executing it"
-  echo "      --show-config     Print the current configuration. Can be combined with --profiles"
+  echo "      --show-profiles   Show the profile list"
+  echo "      --show-config     Show the current configuration. Can be used with --show-profiles"
   echo "      --show-password   Show password from profile in --print and --show-config outputs"
   echo "Environment variables:"
   echo "  ES_CURL_HOME:    Directory containing the profile files"
@@ -230,10 +230,10 @@ add_url() {
 for arg
 do  
   [[ "$arg" == "--help" || "$arg" == "-h" ]] && usage
-  [[ "$arg" == "--show-config" ]] && show_config_opt=true
   [[ "$arg" == "--no-pretty" ]] && pretty_opt=
   [[ "$arg" == "--ndjson" ]] && ndjson_opt=true
   [[ "$arg" == "--kibana" ]] && kibana_opt=true
+  [[ "$arg" == "--show-config" ]] && show_config_opt=true
   [[ "$arg" == "--show-password" ]] && show_password_opt=true
   [[ "$arg" == "--print" ]] && print_opt=true
   if [[ ! -z $profile_next ]]; then    
@@ -288,8 +288,8 @@ do
       # Already parsed. Shift next parameter as --profile expects a value
       shift
       ;;
-    "--profiles")
-      [[ ! -d "$home/" ]] && error "Home directory not found. Check the current configuration with \"$prog --show-config\" (without --profiles)"
+    "--show-profiles")
+      [[ ! -d "$home/" ]] && error "Home directory not found. Check the current configuration with \"$prog --show-config\" (without --show-profiles)"
       if [[ ! -z "$show_config_opt" ]]; then
         if ! command -v grep &> /dev/null; then 
           nogrep=true
@@ -371,7 +371,7 @@ do
 done
 
 # Display the current configuration and exit
-if [[ ! -z "$show_config_opt" && -z "$profiles" ]]; then
+if [[ ! -z "$show_config_opt" ]]; then
   echo "--"
   echo "ES_CURL_HOME=$ES_CURL_HOME"
   echo "ES_CURL_PROFILE=$ES_CURL_PROFILE"
